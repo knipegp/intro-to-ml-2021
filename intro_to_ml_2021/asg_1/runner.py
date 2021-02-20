@@ -1,36 +1,43 @@
 """Run functions to create answers for assignment 1"""
 # /usr/bin/env python3
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+import functools
+from typing import Any, Callable, Dict, List, Tuple
 
-from matplotlib import pyplot as plt
 import numpy
 import pandas
 import seaborn
 from scipy import stats
+from matplotlib import pyplot
 
-from intro_to_ml_2021.asg_1 import question_1
+from intro_to_ml_2021.asg_1 import question_1, question_2
 
 SAMPLECNT = 10000
-Means = numpy.array([[-1.0, 1.0, -1.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
-Covs = numpy.array(
+MEANS = numpy.array([[-1.0, 1.0, -1.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
+COVSA = numpy.array(
     [
         [[2.0, -0.5, 0.3, 0], [-0.5, 1, -0.5, 0], [0.3, -0.5, 1, 0], [0, 0, 0, 2]],
         [[1, 0.3, -0.2, 0], [0.3, 2, 0.3, 0], [-0.2, 0.3, 1, 0], [0, 0, 0, 3]],
     ]
 )
-Priors = numpy.array([0.7, 0.3])
+COVSB = numpy.array([numpy.diagflat(numpy.diagonal(arr)) for arr in COVSA])
+PRIORS_1 = [0.7, 0.3]
+PRIORS_2 = [0.3, 0.3, 0.4]
+
+LOSS_MATS = [[[0, 1, 10], [1, 0, 10], [1, 1, 0]], [[0, 1, 100], [1, 0, 100], [1, 1, 0]]]
 
 
 @dataclass
 class AlarmProbs:
+    """Collection of alarm types for a threshold"""
+
     true_1: float
     false_1: float
     false_0: float
 
 
 def get_ratios(
-    labelled: List[Tuple[float, int]],
+    labelled: List[Tuple[List[float], int]],
     dists: List[
         stats._multivariate.multivariate_normal_frozen
     ],  # pylint: disable=protected-access
@@ -44,7 +51,7 @@ def get_ratios(
 def calc_thresh_alarm(
     thresh: float,
     ratios: List[float],
-    labelled: List[Tuple[float, int]],
+    labelled: List[Tuple[List[float], int]],
 ) -> AlarmProbs:
     """Get the true alarm and false alarm probabilities"""
     dec = [1 if ratio > thresh else 0 for ratio in ratios]
@@ -59,7 +66,7 @@ def calc_thresh_alarm(
 
 
 def roc_points(
-    labelled: List[Tuple[float, int]],
+    labelled: List[Tuple[List[float], int]],
     threshes: numpy.ndarray,
     dists: List[
         stats._multivariate.multivariate_normal_frozen
@@ -74,28 +81,26 @@ def get_minimum_error_threshold(points: Dict[float, AlarmProbs]) -> float:
     """Get the threshold value and ROC point for minimum error"""
     acc_thresh = list(points.keys())[0]
     acc = (
-        points[acc_thresh].false_1 * Priors[0] + points[acc_thresh].false_0 * Priors[1]
+        points[acc_thresh].false_1 * PRIORS_1[0]
+        + points[acc_thresh].false_0 * PRIORS_1[1]
     )
     for thresh in list(points.keys())[1:]:
-        check = points[thresh].false_1 * Priors[0] + points[thresh].false_0 * Priors[1]
+        check = (
+            points[thresh].false_1 * PRIORS_1[0] + points[thresh].false_0 * PRIORS_1[1]
+        )
         if acc > check:
             acc_thresh = thresh
             acc = check
     return acc_thresh
 
 
-def gen_question_1_fig() -> seaborn.FacetGrid:
+def gen_question_1_fig(
+    priors: List[float],
+    labelled: List[Tuple[List[float], int]],
+    dists: List[stats._multivariate.multivariate_normal_frozen],
+) -> seaborn.FacetGrid:
     """Create the ROC curve figure"""
-    dists: List[
-        stats._multivariate.multivariate_normal_frozen
-    ] = [  # pylint: disable=protected-access
-        stats.multivariate_normal(mean=Means[0], cov=Covs[0]),
-        stats.multivariate_normal(mean=Means[1], cov=Covs[1]),
-    ]
-    labelled: List[Tuple[float, int]] = question_1.gen_labelled_samples(
-        Priors, dists, SAMPLECNT
-    )
-    prior_ratio = Priors[0] / Priors[1]
+    prior_ratio = priors[0] / priors[1]
     threshes, ideal_idx = question_1.get_threshes(1000, prior_ratio)
     roc_data = roc_points(labelled, threshes, dists)
     best_thresh = get_minimum_error_threshold(roc_data)
@@ -119,6 +124,123 @@ def gen_question_1_fig() -> seaborn.FacetGrid:
     return grid
 
 
-fig = gen_question_1_fig()
+def run_question_1() -> List[seaborn.FacetGrid]:
+    """Create graphs for both parts A and B"""
+    dists_base: List[
+        stats._multivariate.multivariate_normal_frozen
+    ] = [  # pylint: disable=protected-access
+        stats.multivariate_normal(mean=MEANS[0], cov=COVSA[0]),
+        stats.multivariate_normal(mean=MEANS[1], cov=COVSA[1]),
+    ]
+    labelled: List[Tuple[List[float], int]] = question_1.gen_labelled_samples(
+        PRIORS_1, dists_base, SAMPLECNT
+    )
+    bad_dists: List[
+        stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
+    ] = [
+        stats.multivariate_normal(mean=MEANS[0], cov=COVSB[0]),
+        stats.multivariate_normal(mean=MEANS[1], cov=COVSB[1]),
+    ]
+    return [
+        gen_question_1_fig(PRIORS_1, labelled, dists_base),
+        gen_question_1_fig(PRIORS_1, labelled, bad_dists),
+    ]
 
-plt.show()
+
+def gen_question_2_dists(
+    gaus: List[stats._multivariate.multivariate_normal_frozen],
+) -> List[Tuple[List[float], int]]:
+    """Generated labelled data for question 2"""
+    labelled = question_1.gen_labelled_samples(
+        [PRIORS_2[0], PRIORS_2[1], PRIORS_2[2] / 2, PRIORS_2[2] / 2], gaus, SAMPLECNT
+    )
+    for idx, elem in enumerate(labelled):
+        if elem[1] == 3:
+            new_elem = (elem[0], 2)
+            labelled[idx] = new_elem
+    return labelled
+
+
+def get_decision(
+    pdfs: List[Callable[[List[float]], float]], sample: List[float]
+) -> int:
+    """Stop"""
+    like_prior = numpy.array([pdf(sample) for pdf in pdfs])
+    evidence = sum(like_prior)
+    errors = [1 - lp / evidence for lp in like_prior]
+    zipped = list(enumerate(errors))
+    min_error: Tuple[int, Any] = functools.reduce(
+        lambda accum, elem: elem if elem[1] < accum[1] else accum, zipped[1:], zipped[0]
+    )
+    return min_error[0]
+
+
+def get_lossy_decision(
+    pdfs: List[Callable[[List[float]], float]],
+    loss_mat: List[List[int]],
+    sample: List[float],
+) -> int:
+    like_prior = [pdf(sample) for pdf in pdfs]
+    evidence = sum(like_prior)
+    errors: List[float] = list()
+    for loss in loss_mat:
+        errors.append(
+            sum([elem[1] * elem[0] / evidence for elem in zip(like_prior, loss)])
+        )
+    zipped = list(enumerate(errors))
+    min_error: Tuple[int, Any] = functools.reduce(
+        lambda accum, elem: elem if elem[1] < accum[1] else accum, zipped[1:], zipped[0]
+    )
+    return min_error[0]
+
+
+def get_question_2_data() -> Tuple[
+    List[Tuple[List[float], int]], List[Callable[[List[float]], float]]
+]:
+    gaus = question_2.gen_all_gaussians(3, 4)
+    labelled = gen_question_2_dists(gaus)
+    combined_dists = [
+        question_2.get_pdf_callable(gaus[0:1], PRIORS_2[0:1]),
+        question_2.get_pdf_callable(gaus[1:2], PRIORS_2[1:2]),
+        question_2.get_pdf_callable(gaus[2:], PRIORS_2[2:]),
+    ]
+    return (labelled, combined_dists)
+
+
+def gen_question_2_plot(labelled: List[Tuple[List[float], int]], decisions: List[int]):
+    frame = pandas.DataFrame(
+        [
+            [samp[0][0], samp[0][1], samp[0][2], samp[1], dec]
+            for samp, dec in zip(labelled, decisions)
+        ],
+        columns=["x", "y", "z", "label", "dec"],
+    )
+
+    fig = pyplot.figure()
+    ax = fig.add_subplot(111, projection="3d")
+    for class_label, shape in enumerate(["o", "^", "s"]):
+        right = frame.query(f"label == {class_label} and label == dec")
+        wrong = frame.query(f"label == {class_label} and label != dec")
+        print(
+            f"class {class_label}, error rate {wrong.size / (right.size + wrong.size)}"
+        )
+        ax.scatter(right.x, right.y, right.z, marker=shape, c="g")
+        ax.scatter(wrong.x, wrong.y, wrong.z, marker=shape, c="r")
+    return fig
+
+
+def run_question_2():
+    labelled, combined_dists = get_question_2_data()
+    decs_a = [get_decision(combined_dists, samp[0]) for samp in labelled]
+    decs_b = [
+        get_lossy_decision(combined_dists, LOSS_MATS[0], samp[0]) for samp in labelled
+    ]
+    decs_c = [
+        get_lossy_decision(combined_dists, LOSS_MATS[1], samp[0]) for samp in labelled
+    ]
+    gen_question_2_plot(labelled, decs_a)
+    gen_question_2_plot(labelled, decs_b)
+    gen_question_2_plot(labelled, decs_c)
+
+
+run_question_2()

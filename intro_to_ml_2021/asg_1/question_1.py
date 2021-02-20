@@ -14,7 +14,7 @@ def between(high: float, inc_low: float) -> Callable[[float], bool]:
     return lambda x: high > x >= inc_low
 
 
-def create_label_lims(priors: numpy.ndarray) -> Dict[int, Callable[[float], bool]]:
+def create_label_lims(priors: List[float]) -> Dict[int, Callable[[float], bool]]:
     """Create limits for each class based on prior probabilities"""
     last_high: float = 0.0
     ret: Dict[int, Callable[[float], bool]] = dict()
@@ -33,7 +33,7 @@ def classify(val: float, classifier: Dict[int, Callable[[float], bool]]) -> int:
     raise ValueError(f"value, {val} cannot be classified")
 
 
-def gen_label_cnt(priors: numpy.ndarray, total: int) -> List[int]:
+def gen_label_cnt(priors: List[float], total: int) -> List[int]:
     """Generate the number of each label given priors"""
     gen: random.Generator = random.default_rng()
     vals = gen.random(total)
@@ -47,16 +47,16 @@ def gen_label_cnt(priors: numpy.ndarray, total: int) -> List[int]:
 
 
 def gen_labelled_samples(
-    priors: numpy.ndarray,
+    priors: List[float],
     dists: List[
         stats._multivariate.multivariate_normal_frozen
     ],  # pylint: disable=protected-access
     sample_cnt: int,
-) -> List[Tuple[float, int]]:
+) -> List[Tuple[List[float], int]]:
     """Generate the question one samples only once"""
 
     label_cnts = gen_label_cnt(priors, sample_cnt)
-    ret: List[Tuple[float, int]] = list()
+    ret: List[Tuple[List[float], int]] = list()
     for label, cnt in enumerate(label_cnts):
         samps = dists[label].rvs(size=cnt)
         for samp in samps:
