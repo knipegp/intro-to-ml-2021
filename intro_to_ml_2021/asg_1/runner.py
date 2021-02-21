@@ -2,6 +2,7 @@
 # /usr/bin/env python3
 from dataclasses import dataclass
 import functools
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 
 import numpy
@@ -10,7 +11,7 @@ import seaborn
 from scipy import stats
 from matplotlib import pyplot
 
-from intro_to_ml_2021.asg_1 import question_1, question_2
+from intro_to_ml_2021.asg_1 import question_1, question_2, question_3
 
 SAMPLECNT = 10000
 MEANS = numpy.array([[-1.0, 1.0, -1.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
@@ -25,6 +26,8 @@ PRIORS_1 = [0.7, 0.3]
 PRIORS_2 = [0.3, 0.3, 0.4]
 
 LOSS_MATS = [[[0, 1, 10], [1, 0, 10], [1, 1, 0]], [[0, 1, 100], [1, 0, 100], [1, 1, 0]]]
+
+PHONE_ROOT = Path("~/Downloads/ml_dataset/UCI HAR Dataset").expanduser()
 
 
 @dataclass
@@ -238,9 +241,57 @@ def run_question_2():
     decs_c = [
         get_lossy_decision(combined_dists, LOSS_MATS[1], samp[0]) for samp in labelled
     ]
-    gen_question_2_plot(labelled, decs_a)
-    gen_question_2_plot(labelled, decs_b)
+    # gen_question_2_plot(labelled, decs_a)
+    # gen_question_2_plot(labelled, decs_b)
     gen_question_2_plot(labelled, decs_c)
 
 
-run_question_2()
+def get_question_3_b_data() -> Tuple[numpy.ndarray, numpy.ndarray, pandas.DataFrame]:
+    """Put all question 3 phone data in a Pandas dataframe"""
+    int_to_label = question_3.get_info(Path(PHONE_ROOT, "activity_labels.txt"))
+    feat_names = question_3.get_info(Path(PHONE_ROOT, "features.txt"))
+    frame = pandas.DataFrame(columns=list(feat_names.values()))
+    subjects = numpy.array(list())
+    labels = numpy.array(list(), dtype=int)
+    for suf in ["train", "test"]:
+        subjects = numpy.append(
+            subjects,
+            numpy.loadtxt(Path(PHONE_ROOT, suf, f"subject_{suf}.txt"), dtype=int),
+        )
+        labels = numpy.append(
+            labels, numpy.loadtxt(Path(PHONE_ROOT, suf, f"y_{suf}.txt"), dtype=int)
+        )
+        features = numpy.loadtxt(Path(PHONE_ROOT, suf, f"X_{suf}.txt"), dtype=float)
+        new_frame = pandas.DataFrame(
+            features,
+            columns=list(feat_names.values()),
+        )
+        frame = frame.append(new_frame, ignore_index=True)
+    return subjects, labels, frame
+
+
+def get_mean_vectors(
+    labels: numpy.ndarray, frame: pandas.DataFrame
+) -> List[stats._multivariate.multivariate_normal_frozen]:
+    """Get a mean vector for each label"""
+    dists = list()
+    for lab in numpy.unique(labels):
+        idxs = numpy.where(labels == lab)
+        for idx in idxs:
+            mean = frame.loc[idx].mean().values
+            cov = frame.loc[idx].cov().values
+            dists.append(
+                stats.multivariate_normal(mean=mean, cov=cov, allow_singular=True)
+            )
+
+    return dists
+
+
+_, labels, frame = get_question_3_b_data()
+dists = get_mean_vectors(labels, frame)
+print(dists)
+# dist = stats.multivariate_normal()
+# priors = numpy.bincount(labels)[1:] / labels.shape[0]
+# print(priors)
+# print(frame.mean())
+# print(frame.cov())

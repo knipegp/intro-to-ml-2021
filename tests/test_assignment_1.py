@@ -2,10 +2,11 @@
 # /usr/bin/env python3
 
 from typing import List, Tuple
+from pathlib import Path
 
 import numpy
 import pytest
-from intro_to_ml_2021.asg_1 import question_1, question_2, runner
+from intro_to_ml_2021.asg_1 import question_1, question_2, question_3, runner
 from scipy import stats
 
 
@@ -61,3 +62,8 @@ def test_gen_dist_data():
     gaus = question_2.gen_all_gaussians(3, 3)
     frame = question_2.gen_dist_data((0, 10), 100, gaus)
     assert len(frame) == 300
+
+def test_get_labels():
+    labels = question_3.get_info(Path("./tests/labels.txt"))
+    assert labels[1] == "LABELA"
+    assert labels[2] == "LABELB"
