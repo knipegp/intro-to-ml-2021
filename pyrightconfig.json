@@ -1,0 +1,14 @@
+{
+  "include": [
+    "practice_problems"
+  ],
+  
+  "venvPath": "/home/griff/.cache/pypoetry/virtualenvs/intro-to-ml-2021-SFW0ZT80-py3.9",
+
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+
+  "pythonVersion": "3.9",
+  "pythonPlatform": "Linux"
+
+}
