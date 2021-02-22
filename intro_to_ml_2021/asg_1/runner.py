@@ -1,17 +1,15 @@
 """Run functions to create answers for assignment 1"""
 # /usr/bin/env python3
 from dataclasses import dataclass
-import functools
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import numpy
 import pandas
 import seaborn
-from scipy import stats
-from matplotlib import pyplot
-
 from intro_to_ml_2021.asg_1 import question_1, question_2, question_3
+from matplotlib import pyplot
+from scipy import stats
 
 SAMPLECNT = 10000
 MEANS = numpy.array([[-1.0, 1.0, -1.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
@@ -29,6 +27,8 @@ LOSS_MATS = [[[0, 1, 10], [1, 0, 10], [1, 1, 0]], [[0, 1, 100], [1, 0, 100], [1,
 
 PHONE_ROOT = Path("~/Downloads/ml_dataset/UCI HAR Dataset").expanduser()
 
+ALPHA = 0.195
+
 
 @dataclass
 class AlarmProbs:
@@ -40,44 +40,57 @@ class AlarmProbs:
 
 
 def get_ratios(
-    labelled: List[Tuple[List[float], int]],
+    samples: numpy.ndarray,
     dists: List[
-        stats._multivariate.multivariate_normal_frozen
-    ],  # pylint: disable=protected-access
-) -> List[float]:
+        stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
+    ],
+) -> numpy.ndarray:
     """Get the likelihood ratios for all samples"""
-    norm_pdf_0 = [dists[0].pdf(samp[0]) for samp in labelled]
-    norm_pdf_1 = [dists[1].pdf(samp[0]) for samp in labelled]
-    return [prob_1 / prob_0 for prob_0, prob_1 in zip(norm_pdf_0, norm_pdf_1)]
+    norm_pdf_0 = numpy.array([dists[0].pdf(samp) for samp in samples])
+    norm_pdf_1 = numpy.array([dists[1].pdf(samp) for samp in samples])
+    return norm_pdf_1 / norm_pdf_0
 
 
 def calc_thresh_alarm(
     thresh: float,
-    ratios: List[float],
-    labelled: List[Tuple[List[float], int]],
+    ratios: numpy.ndarray,
+    lab_1_idxs: numpy.ndarray,
+    lab_0_idxs: numpy.ndarray,
 ) -> AlarmProbs:
     """Get the true alarm and false alarm probabilities"""
-    dec = [1 if ratio > thresh else 0 for ratio in ratios]
-    l_1 = tuple(filter(lambda x: x[1][1] == 1, zip(dec, labelled)))
-    l_0 = tuple(filter(lambda x: x[1][1] == 0, zip(dec, labelled)))
-    prob_true_pos = len(tuple(filter(lambda pair: pair[0] == 1, l_1))) / len(l_1)
-    prob_false_pos = len(tuple(filter(lambda pair: pair[0] == 1, l_0))) / len(l_0)
-    prob_false_neg = len(tuple(filter(lambda pair: pair[0] == 0, l_1))) / len(l_1)
+    dec = numpy.where(ratios > thresh, 1, 0)
+
+    dec_any_lab_1 = dec[lab_1_idxs]
+    dec_1_lab_1_idxs = numpy.where(dec_any_lab_1 == 1)[0]
+    dec_0_lab_1_idxs = numpy.where(dec_any_lab_1 == 0)[0]
+
+    dec_any_lab_0 = dec[lab_0_idxs]
+    dec_1_lab_0_idxs = numpy.where(dec_any_lab_0 == 1)[0]
+
+    prob_true_pos = dec_1_lab_1_idxs.shape[0] / lab_1_idxs.shape[0]
+    prob_false_pos = dec_1_lab_0_idxs.shape[0] / lab_0_idxs.shape[0]
+    prob_false_neg = dec_0_lab_1_idxs.shape[0] / lab_1_idxs.shape[0]
     return AlarmProbs(
         true_1=prob_true_pos, false_1=prob_false_pos, false_0=prob_false_neg
     )
 
 
 def roc_points(
-    labelled: List[Tuple[List[float], int]],
+    samples: numpy.ndarray,
+    labels: numpy.ndarray,
     threshes: numpy.ndarray,
     dists: List[
-        stats._multivariate.multivariate_normal_frozen
-    ],  # pylint: disable=protected-access
+        stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
+    ],
 ) -> Dict[float, AlarmProbs]:
     """Get all points for the ROC curve"""
-    ratios = get_ratios(labelled, dists)
-    return {thresh: calc_thresh_alarm(thresh, ratios, labelled) for thresh in threshes}
+    ratios = get_ratios(samples, dists)
+    lab_1_idxs = numpy.where(labels == 1)[0]
+    lab_0_idxs = numpy.where(labels == 0)[0]
+    return {
+        thresh: calc_thresh_alarm(thresh, ratios, lab_1_idxs, lab_0_idxs)
+        for thresh in threshes
+    }
 
 
 def get_minimum_error_threshold(points: Dict[float, AlarmProbs]) -> float:
@@ -97,16 +110,16 @@ def get_minimum_error_threshold(points: Dict[float, AlarmProbs]) -> float:
     return acc_thresh
 
 
-def gen_question_1_fig(
-    priors: List[float],
-    labelled: List[Tuple[List[float], int]],
-    dists: List[stats._multivariate.multivariate_normal_frozen],
-) -> seaborn.FacetGrid:
-    """Create the ROC curve figure"""
-    prior_ratio = priors[0] / priors[1]
+def gen_question_1_fig_data(
+    prior_ratio: float,
+    samples: numpy.ndarray,
+    labels: numpy.ndarray,
+    dists: List[
+        stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
+    ],
+) -> Tuple[int, Dict[float, AlarmProbs], numpy.ndarray, pandas.DataFrame]:
     threshes, ideal_idx = question_1.get_threshes(1000, prior_ratio)
-    roc_data = roc_points(labelled, threshes, dists)
-    best_thresh = get_minimum_error_threshold(roc_data)
+    roc_data = roc_points(samples, labels, threshes, dists)
     points = pandas.DataFrame(
         [
             [thresh, alarms.false_1, alarms.true_1, alarms.false_0]
@@ -114,12 +127,24 @@ def gen_question_1_fig(
         ],
         columns=["thresh", "false_1", "true_1", "false_0"],
     )
+    return ideal_idx, roc_data, threshes, points
+
+
+def gen_question_1_fig(
+    prior_ratio: float,
+    ideal_thresh_idx: int,
+    roc_data: Dict[float, AlarmProbs],
+    threshes: numpy.ndarray,
+    points: pandas.DataFrame,
+) -> seaborn.FacetGrid:
+    """Create the ROC curve figure"""
+    best_thresh = get_minimum_error_threshold(roc_data)
     grid = seaborn.FacetGrid(data=points)
     grid.map_dataframe(seaborn.lineplot, x="false_1", y="true_1")
     grid.set_axis_labels("P(D=0|L=1)", "P(D=1|L=1)")
     best_x = roc_data[best_thresh].false_1
     best_y = roc_data[best_thresh].true_1
-    theo_thresh = threshes[ideal_idx]
+    theo_thresh = threshes[ideal_thresh_idx]
     theo_x = roc_data[theo_thresh].false_1
     theo_y = roc_data[theo_thresh].true_1
     grid.axes[0][0].text(best_x, best_y, f"best calculated threshold = {best_thresh}")
@@ -130,127 +155,135 @@ def gen_question_1_fig(
 def run_question_1() -> List[seaborn.FacetGrid]:
     """Create graphs for both parts A and B"""
     dists_base: List[
-        stats._multivariate.multivariate_normal_frozen
-    ] = [  # pylint: disable=protected-access
+        stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
+    ] = [
         stats.multivariate_normal(mean=MEANS[0], cov=COVSA[0]),
         stats.multivariate_normal(mean=MEANS[1], cov=COVSA[1]),
     ]
-    labelled: List[Tuple[List[float], int]] = question_1.gen_labelled_samples(
-        PRIORS_1, dists_base, SAMPLECNT
-    )
+    samples, labels = question_1.gen_labelled_samples(PRIORS_1, dists_base, SAMPLECNT)
     bad_dists: List[
         stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
     ] = [
         stats.multivariate_normal(mean=MEANS[0], cov=COVSB[0]),
         stats.multivariate_normal(mean=MEANS[1], cov=COVSB[1]),
     ]
+    prior_ratio = PRIORS_1[0] / PRIORS_1[1]
+    ideal_idx_1, roc_data_1, threshes_1, points_1 = gen_question_1_fig_data(
+        prior_ratio, samples, labels, dists_base
+    )
+    ideal_idx_2, roc_data_2, threshes_2, points_2 = gen_question_1_fig_data(
+        prior_ratio, samples, labels, bad_dists
+    )
+
     return [
-        gen_question_1_fig(PRIORS_1, labelled, dists_base),
-        gen_question_1_fig(PRIORS_1, labelled, bad_dists),
+        gen_question_1_fig(prior_ratio, ideal_idx_1, roc_data_1, threshes_1, points_1),
+        gen_question_1_fig(prior_ratio, ideal_idx_2, roc_data_2, threshes_2, points_2),
     ]
 
 
 def gen_question_2_dists(
-    gaus: List[stats._multivariate.multivariate_normal_frozen],
-) -> List[Tuple[List[float], int]]:
+    gaus: List[
+        stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
+    ],
+) -> Tuple[numpy.ndarray, numpy.ndarray]:
     """Generated labelled data for question 2"""
-    labelled = question_1.gen_labelled_samples(
+    samples, labels = question_1.gen_labelled_samples(
         [PRIORS_2[0], PRIORS_2[1], PRIORS_2[2] / 2, PRIORS_2[2] / 2], gaus, SAMPLECNT
     )
-    for idx, elem in enumerate(labelled):
-        if elem[1] == 3:
-            new_elem = (elem[0], 2)
-            labelled[idx] = new_elem
-    return labelled
+    for idx in numpy.where(labels == 3):
+        labels[idx] = 2
+    return samples, labels
 
 
 def get_decision(
-    pdfs: List[Callable[[List[float]], float]], sample: List[float]
+    pdfs: Dict[int, Callable[[List[float]], float]], sample: List[float]
 ) -> int:
     """Stop"""
-    like_prior = numpy.array([pdf(sample) for pdf in pdfs])
-    evidence = sum(like_prior)
-    errors = [1 - lp / evidence for lp in like_prior]
-    zipped = list(enumerate(errors))
-    min_error: Tuple[int, Any] = functools.reduce(
-        lambda accum, elem: elem if elem[1] < accum[1] else accum, zipped[1:], zipped[0]
-    )
-    return min_error[0]
+    label_pdf = numpy.array([[label, pdf(sample)] for label, pdf in pdfs.items()])
+    labels = label_pdf[:, 0]
+    like_prior = label_pdf[:, 1]
+    evidence = numpy.sum(like_prior)
+    errors = numpy.array([1 - lp / evidence for lp in like_prior])
+    dec_idx = errors.argmin()
+    return labels[dec_idx]
 
 
 def get_lossy_decision(
-    pdfs: List[Callable[[List[float]], float]],
+    pdfs: Dict[int, Callable[[List[float]], float]],
     loss_mat: List[List[int]],
     sample: List[float],
 ) -> int:
-    like_prior = [pdf(sample) for pdf in pdfs]
-    evidence = sum(like_prior)
-    errors: List[float] = list()
-    for loss in loss_mat:
-        errors.append(
-            sum([elem[1] * elem[0] / evidence for elem in zip(like_prior, loss)])
-        )
-    zipped = list(enumerate(errors))
-    min_error: Tuple[int, Any] = functools.reduce(
-        lambda accum, elem: elem if elem[1] < accum[1] else accum, zipped[1:], zipped[0]
+    label_pdf = numpy.array([[label, pdf(sample)] for label, pdf in pdfs.items()])
+    labels = label_pdf[:, 0]
+    like_prior = label_pdf[:, 1]
+    evidence = numpy.sum(like_prior)
+    errors = numpy.array(
+        [sum(loss_vec * like_prior / evidence) for loss_vec in loss_mat]
     )
-    return min_error[0]
+    dec_idx = errors.argmin()
+    return labels[dec_idx]
 
 
 def get_question_2_data() -> Tuple[
-    List[Tuple[List[float], int]], List[Callable[[List[float]], float]]
+    numpy.ndarray, numpy.ndarray, Dict[int, Callable[[List[float]], float]]
 ]:
     gaus = question_2.gen_all_gaussians(3, 4)
-    labelled = gen_question_2_dists(gaus)
-    combined_dists = [
-        question_2.get_pdf_callable(gaus[0:1], PRIORS_2[0:1]),
-        question_2.get_pdf_callable(gaus[1:2], PRIORS_2[1:2]),
-        question_2.get_pdf_callable(gaus[2:], PRIORS_2[2:]),
-    ]
-    return (labelled, combined_dists)
+    samples, labels = gen_question_2_dists(gaus)
+    combined_dists = {
+        0: question_2.get_pdf_callable(gaus[0:1], PRIORS_2[0:1]),
+        1: question_2.get_pdf_callable(gaus[1:2], PRIORS_2[1:2]),
+        2: question_2.get_pdf_callable(gaus[2:], PRIORS_2[2:]),
+    }
+    return (samples, labels, combined_dists)
 
 
-def gen_question_2_plot(labelled: List[Tuple[List[float], int]], decisions: List[int]):
+def gen_question_2_plot(
+    samples: numpy.ndarray, labels: numpy.ndarray, decisions: numpy.ndarray
+):
+    """Generate a plot for question 2"""
     frame = pandas.DataFrame(
-        [
-            [samp[0][0], samp[0][1], samp[0][2], samp[1], dec]
-            for samp, dec in zip(labelled, decisions)
-        ],
+        numpy.hstack(
+            (
+                samples,
+                labels.reshape((labels.shape[0], 1)),
+                decisions.reshape((decisions.shape[0], 1)),
+            )
+        ),
         columns=["x", "y", "z", "label", "dec"],
     )
 
     fig = pyplot.figure()
-    ax = fig.add_subplot(111, projection="3d")
+    axes = fig.add_subplot(111, projection="3d")
     for class_label, shape in enumerate(["o", "^", "s"]):
         right = frame.query(f"label == {class_label} and label == dec")
         wrong = frame.query(f"label == {class_label} and label != dec")
         print(
             f"class {class_label}, error rate {wrong.size / (right.size + wrong.size)}"
         )
-        ax.scatter(right.x, right.y, right.z, marker=shape, c="g")
-        ax.scatter(wrong.x, wrong.y, wrong.z, marker=shape, c="r")
+        axes.scatter(right.x, right.y, right.z, marker=shape, c="g")
+        axes.scatter(wrong.x, wrong.y, wrong.z, marker=shape, c="r")
     return fig
 
 
 def run_question_2():
-    labelled, combined_dists = get_question_2_data()
-    decs_a = [get_decision(combined_dists, samp[0]) for samp in labelled]
-    decs_b = [
-        get_lossy_decision(combined_dists, LOSS_MATS[0], samp[0]) for samp in labelled
-    ]
-    decs_c = [
-        get_lossy_decision(combined_dists, LOSS_MATS[1], samp[0]) for samp in labelled
-    ]
-    # gen_question_2_plot(labelled, decs_a)
-    # gen_question_2_plot(labelled, decs_b)
-    gen_question_2_plot(labelled, decs_c)
+    """Run question 2"""
+    samples, labels, combined_dists = get_question_2_data()
+    decs_a = numpy.array([get_decision(combined_dists, samp) for samp in samples])
+    decs_b = numpy.array(
+        [get_lossy_decision(combined_dists, LOSS_MATS[0], samp) for samp in samples]
+    )
+    decs_c = numpy.array(
+        [get_lossy_decision(combined_dists, LOSS_MATS[1], samp) for samp in samples]
+    )
+    gen_question_2_plot(samples, labels, decs_a)
+    gen_question_2_plot(samples, labels, decs_b)
+    gen_question_2_plot(samples, labels, decs_c)
 
 
 def get_question_3_b_data() -> Tuple[numpy.ndarray, numpy.ndarray, pandas.DataFrame]:
     """Put all question 3 phone data in a Pandas dataframe"""
-    int_to_label = question_3.get_info(Path(PHONE_ROOT, "activity_labels.txt"))
     feat_names = question_3.get_info(Path(PHONE_ROOT, "features.txt"))
-    frame = pandas.DataFrame(columns=list(feat_names.values()))
+    frame = pandas.DataFrame(columns=feat_names.values())
     subjects = numpy.array(list())
     labels = numpy.array(list(), dtype=int)
     for suf in ["train", "test"]:
@@ -270,28 +303,39 @@ def get_question_3_b_data() -> Tuple[numpy.ndarray, numpy.ndarray, pandas.DataFr
     return subjects, labels, frame
 
 
-def get_mean_vectors(
-    labels: numpy.ndarray, frame: pandas.DataFrame
-) -> List[stats._multivariate.multivariate_normal_frozen]:
-    """Get a mean vector for each label"""
-    dists = list()
-    for lab in numpy.unique(labels):
-        idxs = numpy.where(labels == lab)
-        for idx in idxs:
-            mean = frame.loc[idx].mean().values
-            cov = frame.loc[idx].cov().values
-            dists.append(
-                stats.multivariate_normal(mean=mean, cov=cov, allow_singular=True)
-            )
+def get_q_3_accuracy(
+    labels: numpy.ndarray, frame: pandas.DataFrame, alpha: float
+) -> float:
+    """Get the accuracy of classification for the given data"""
+    dists = question_3.get_mean_vectors(labels, frame, alpha)
+    bins = numpy.bincount(labels)
+    priors = bins[numpy.nonzero(bins)] / sum(bins)
+    callables = {
+        lab: question_2.get_pdf_callable([d], [p])
+        for lab, d, p in zip(numpy.unique(labels), dists, priors)
+    }
+    right = 0
+    for idx, label in enumerate(labels):
+        dec = get_decision(callables, frame.loc[idx].values)
+        if dec == label:
+            right += 1
+    return right / sum(bins)
 
-    return dists
+
+def run_question_3_b() -> float:
+    """Return the correct classification rate"""
+    _, labels, frame = get_question_3_b_data()
+    return get_q_3_accuracy(labels, frame, ALPHA)
 
 
-_, labels, frame = get_question_3_b_data()
-dists = get_mean_vectors(labels, frame)
-print(dists)
-# dist = stats.multivariate_normal()
-# priors = numpy.bincount(labels)[1:] / labels.shape[0]
-# print(priors)
-# print(frame.mean())
-# print(frame.cov())
+def run_question_3_a() -> float:
+    """Run question 3 a"""
+    frame: pandas.DataFrame = pandas.read_csv(
+        Path("~/Downloads/winequality-white.csv").expanduser(), sep=";"
+    )
+    quality: numpy.ndarray = frame.pop("quality").values
+    return get_q_3_accuracy(quality, frame, 0.3)
+
+
+run_question_1()
+pyplot.show()

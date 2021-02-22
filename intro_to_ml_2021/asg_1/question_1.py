@@ -49,19 +49,18 @@ def gen_label_cnt(priors: List[float], total: int) -> List[int]:
 def gen_labelled_samples(
     priors: List[float],
     dists: List[
-        stats._multivariate.multivariate_normal_frozen
-    ],  # pylint: disable=protected-access
+        stats._multivariate.multivariate_normal_frozen  # pylint: disable=protected-access
+    ],
     sample_cnt: int,
-) -> List[Tuple[List[float], int]]:
-    """Generate the question one samples only once"""
-
+) -> Tuple[numpy.ndarray, numpy.ndarray]:
+    """Generate the question one samples with labels"""
     label_cnts = gen_label_cnt(priors, sample_cnt)
-    ret: List[Tuple[List[float], int]] = list()
+    samples = numpy.array(list([0] * dists[0].dim), dtype=float, ndmin=2)
+    labels = numpy.array(list([0]), dtype=int)
     for label, cnt in enumerate(label_cnts):
-        samps = dists[label].rvs(size=cnt)
-        for samp in samps:
-            ret.append((samp, label))
-    return ret
+        samples = numpy.vstack((samples, dists[label].rvs(size=cnt)))
+        labels = numpy.append(labels, [label] * cnt)
+    return samples[1:], labels[1:]
 
 
 def get_threshes(cnt: int, ideal: float) -> Tuple[numpy.ndarray, int]:

@@ -1,12 +1,12 @@
 """Functions for question 2"""
 #!/usr/bin/env python3
-from typing import Callable, List, Optional, Tuple, Dict
+from typing import Callable, List, Optional, Tuple
 
-from numpy import random
 import numpy
 import pandas
 import seaborn
-from matplotlib import axes, pyplot
+from matplotlib import axes
+from numpy import random
 from scipy import stats
 
 
