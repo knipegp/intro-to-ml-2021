@@ -1,12 +1,11 @@
 """Functions for question 1"""
 #!/usr/bin/env python3
 
-from typing import Tuple, List, Dict, Union
+from typing import Dict, List, Tuple, Union
 
-import pandas
 import numpy
-from numpy import random
-from numpy import linalg
+import pandas
+from numpy import linalg, random
 from scipy import stats
 
 
@@ -56,8 +55,7 @@ def get_rand_cov(
         for idx, eigval in enumerate(eigs):
             if eigval < eigval_range[0] or eigval > eigval_range[1]:
                 break
-            else:
-                good_eigs[idx] = True
+            good_eigs[idx] = True
         if False not in good_eigs:
             return cov
     # raise ValueError
@@ -90,17 +88,20 @@ def gen_data(
     name_size: Dict[str, int],
 ) -> pandas.DataFrame:
     """Generate data sets"""
-    sample_total = sum(name_size.values())
-    choice_per_op = random.choice(list(range(len(priors))), sample_total, p=priors)
+    choice_per_op = random.choice(
+        list(range(len(priors))), sum(name_size.values()), p=priors
+    )
     single_choices = numpy.unique(choice_per_op)
     samples: Union[numpy.ndarray, None] = None
     for single_choice in single_choices:
         choice_cnt = numpy.where(choice_per_op == single_choice)[0].shape[0]
-        class_samps = stats.multivariate_normal(
-            mean=means[single_choice], cov=covs[single_choice]
-        ).rvs(choice_cnt)
         samps_with_class = numpy.hstack(
-            (class_samps, numpy.array([single_choice] * choice_cnt, ndmin=2).T)
+            (
+                stats.multivariate_normal(
+                    mean=means[single_choice], cov=covs[single_choice]
+                ).rvs(choice_cnt),
+                numpy.array([single_choice] * choice_cnt, ndmin=2).T,
+            )
         )
         if samples is None:
             samples = samps_with_class
@@ -110,7 +111,9 @@ def gen_data(
     for set_name, set_size in name_size.items():
         raw_sample_sets += [set_name] * set_size
     sample_sets = numpy.array(raw_sample_sets).reshape((len(raw_sample_sets), 1))
-    print(sample_sets.size)
-    # for set_name, set_size in name_size.items():
-    #     class_cnts = choices()
-    #     stats.multivariate_normal()
+    random.shuffle(samples)
+    frame: pandas.DataFrame = pandas.DataFrame(
+        samples, columns=["x0", "x1", "x2", "label"]
+    )
+    frame["set_name"] = sample_sets
+    return frame
