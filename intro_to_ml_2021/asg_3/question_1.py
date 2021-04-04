@@ -7,6 +7,7 @@ import numpy
 import pandas
 from numpy import linalg, random
 from scipy import stats
+from sklearn import model_selection, neural_network
 
 
 def get_cube_verts(
@@ -117,3 +118,45 @@ def gen_data(
     )
     frame["set_name"] = sample_sets
     return frame
+
+
+def get_best_length(lens: numpy.ndarray, scores: numpy.ndarray) -> int:
+    """Return the best hidden layer length given the performance stats"""
+    coef = numpy.polyfit(lens, scores, 3)
+    fit = numpy.polyval(coef, lens)
+    delta = numpy.diff(fit)
+    last_inc_idx = numpy.where(delta <= 0)[0][0]
+    return lens[:last_inc_idx].max()
+
+
+def train_and_score(
+    train_x: numpy.ndarray,
+    train_label: numpy.ndarray,
+    test_x: numpy.ndarray,
+    test_label: numpy.ndarray,
+    layer_len: int,
+) -> float:
+    """Train and test a model"""
+    mlp = neural_network.MLPClassifier(
+        hidden_layer_sizes=(layer_len,),
+        activation="logistic",
+        max_iter=10000,
+        learning_rate_init=0.00004,
+    )
+    mlp.fit(train_x, train_label)
+    return mlp.score(test_x, test_label)
+
+
+def cross_validation(
+    xvals: numpy.ndarray, targets: numpy.ndarray, length: int
+) -> numpy.ndarray:
+    """Run cross validation"""
+    mlp = neural_network.MLPClassifier(
+        hidden_layer_sizes=(length,),
+        activation="logistic",
+        max_iter=10000,
+        learning_rate_init=0.00004,
+    )
+    return numpy.array(
+        model_selection.cross_val_score(mlp, xvals, targets, cv=10, n_jobs=-1)
+    )

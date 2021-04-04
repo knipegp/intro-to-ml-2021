@@ -1,15 +1,13 @@
 """Run assignment 3"""
 #!/usr/bin/env python3
 
-from typing import Dict, List
+from typing import List
 
 import numpy
 import pandas
-from intro_to_ml_2021.asg_3 import question_1
-from sklearn import model_selection, neural_network
-from mpl_toolkits.mplot3d.axes3d import Axes3D
+from intro_to_ml_2021.asg_3 import question_1, question_2
 from matplotlib import pyplot
-import seaborn
+from mpl_toolkits.mplot3d.axes3d import Axes3D
 from tqdm import tqdm
 
 PRIORS = [0.25, 0.25, 0.25, 0.25]
@@ -50,7 +48,7 @@ def plot_data(frame: pandas.DataFrame):
     fig = pyplot.figure()
     plot: Axes3D = fig.add_subplot(111, projection="3d")
     for label, color in zip(numpy.unique(frame.label.values), ["r", "g", "b"]):
-        single_label_data = frame.loc[frame["label"] == label]
+        single_label_data: pandas.DataFrame = frame.loc[frame["label"] == label]
         plot.scatter(
             single_label_data.x0, single_label_data.x1, single_label_data.x2, c=color
         )
@@ -67,8 +65,8 @@ def get_length_scores(frame: pandas.DataFrame) -> pandas.DataFrame:
         for set_name in all_sets:
             if set_name == "test":
                 continue
-            train_frame = frame.loc[frame["set_name"] == set_name]
-            xvals = train_frame[["x0", "x1", "x2"]].values
+            train_frame: pandas.DataFrame = frame.loc[frame["set_name"] == set_name]
+            xvals: numpy.ndarray = train_frame[["x0", "x1", "x2"]].values
             targets = train_frame["label"]
             for length in LENGTH_TESTS:
                 score_frame = score_frame.append(
@@ -76,7 +74,7 @@ def get_length_scores(frame: pandas.DataFrame) -> pandas.DataFrame:
                         "set_name": set_name,
                         "layer_length": length,
                         "score_means": numpy.mean(
-                            cross_validation(xvals, targets, length)
+                            question_1.cross_validation(xvals, targets, length)
                         ),
                     },
                     ignore_index=True,
@@ -85,19 +83,44 @@ def get_length_scores(frame: pandas.DataFrame) -> pandas.DataFrame:
     return score_frame
 
 
-def cross_validation(
-    xvals: numpy.ndarray, targets: numpy.ndarray, length: int
-) -> numpy.ndarray:
-    """Run cross validation"""
-    mlp = neural_network.MLPClassifier(
-        hidden_layer_sizes=(length,),
-        activation="logistic",
-        max_iter=10000,
-        learning_rate_init=0.00004,
-    )
-    return numpy.array(
-        model_selection.cross_val_score(mlp, xvals, targets, cv=10, n_jobs=-1)
-    )
+def train_and_score_all(
+    score_frame: pandas.DataFrame, sample_frame: pandas.DataFrame
+) -> List[float]:
+    """Train and score all classifiers"""
+    scores: List[float] = list()
+    test: pandas.DataFrame = sample_frame.loc[sample_frame["set_name"] == "test"]
+    with tqdm(total=len(SET_NAME_SIZES)) as pbar:
+        for set_name in SET_NAME_SIZES:
+            pbar.update(1)
+            if set_name == "test":
+                continue
+            scores_set: pandas.DataFrame = score_frame.loc[
+                score_frame["set_name"] == set_name
+            ]
+            layer_len = question_1.get_best_length(
+                scores_set.layer_length.values, scores_set.score_means.values
+            )
+            train_set: pandas.DataFrame = sample_frame.loc[
+                sample_frame["set_name"] == set_name
+            ]
+            scores.append(
+                question_1.train_and_score(
+                    train_set[["x0", "x1", "x2"]],
+                    train_set["label"],
+                    test[["x0", "x1", "x2"]],
+                    test["label"],
+                    layer_len,
+                )
+            )
+    return scores
 
 
-run_question_1()
+# print(
+#     train_and_score_all(
+#         pandas.read_csv("../../scores.csv"), pandas.read_csv("../../frame.csv")
+#     )
+# )
+frame = question_2.gen_data(1000, 10000, 2)
+frame.to_csv("svm_data.csv")
+results = question_2.parameter_search_svm(frame)
+results.to_csv("svm_results.csv")
