@@ -30,9 +30,9 @@ def gen_data(train_cnt: int, test_cnt: int, class_cnt: int) -> pandas.DataFrame:
 
 def parameter_search_svm(frame: pandas.DataFrame) -> pandas.DataFrame:
     """Search for C and gamma values"""
-    params = {"C": numpy.logspace(-3, 3, 7), "gamma": numpy.logspace(-3, 3, 7)}
+    params = {"C": numpy.logspace(-1, 3, 15), "gamma": numpy.logspace(-1, 3, 15)}
     svc = svm.SVC()
-    search = model_selection.GridSearchCV(svc, params, n_jobs=-1, cv=10)
+    search = model_selection.GridSearchCV(svc, params, n_jobs=-1, cv=10, verbose=2)
     train_frame = frame.loc[frame["set_name"] == "train"]
     search.fit(train_frame[["x0", "x1"]].values, train_frame["labels"])
     return pandas.DataFrame(search.cv_results_)

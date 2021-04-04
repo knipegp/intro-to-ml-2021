@@ -5,6 +5,7 @@ from typing import List
 
 import numpy
 import pandas
+import seaborn
 from intro_to_ml_2021.asg_3 import question_1, question_2
 from matplotlib import pyplot
 from mpl_toolkits.mplot3d.axes3d import Axes3D
@@ -124,3 +125,7 @@ frame = question_2.gen_data(1000, 10000, 2)
 frame.to_csv("svm_data.csv")
 results = question_2.parameter_search_svm(frame)
 results.to_csv("svm_results.csv")
+seaborn.heatmap(
+    results.pivot(index="param_C", columns="param_gamma", values="mean_test_score")
+)
+pyplot.show()
