@@ -7,7 +7,10 @@ import numpy
 import pandas
 from numpy import linalg, random
 from scipy import stats
+import seaborn
 from sklearn import model_selection, neural_network
+from tqdm import tqdm
+from matplotlib import axes
 
 
 def get_cube_verts(
@@ -59,27 +62,6 @@ def get_rand_cov(
             good_eigs[idx] = True
         if False not in good_eigs:
             return cov
-    # raise ValueError
-
-
-# def choices(size: int, priors: List[float]) -> List[int]:
-#     """Return a choice given priors"""
-#     ranges: List[Tuple[float, float]] = list()
-#     start = 0.0
-#     choice_cnts: List[int] = [0] * len(priors)
-#     for prior in priors:
-#         ranges.append((start, prior + start))
-#         start += prior
-#     assert ranges[-1][1] <= 1.0
-#     for _ in range(size):
-#         rand_val: float = random.random_sample()
-#         for choice, choice_range in enumerate(ranges):
-#             if rand_val >= choice_range[0] and rand_val < choice_range[1]:
-#                 break
-#         assert rand_val >= choice_range[0] and rand_val < choice_range[1]
-#         choice_cnts[choice] += 1
-#     print(choice_cnts)
-#     return choice_cnts
 
 
 def gen_data(
@@ -160,3 +142,91 @@ def cross_validation(
     return numpy.array(
         model_selection.cross_val_score(mlp, xvals, targets, cv=10, n_jobs=-1)
     )
+
+
+def _guess_class(
+    samp: numpy.ndarray,
+    dists: List[Tuple[float, stats._multivariate.multivariate_normal_frozen]],
+) -> int:
+    likes: List[float] = list()
+    for prior_dist in dists:
+        prior = prior_dist[0]
+        dist = prior_dist[1]
+        likes.append(dist.pdf(samp) * prior)
+    pdf = sum(likes)
+    return int(numpy.argmin(numpy.array([1 - like / pdf for like in likes])))
+
+
+def evaluate_optimal(
+    data: pandas.DataFrame,
+    means: numpy.ndarray,
+    covs: numpy.ndarray,
+    priors: numpy.ndarray,
+) -> float:
+    """Evaluate the optimal classifier. Return the accuracy rate."""
+    dists: List[Tuple[float, stats._multivariate.multivariate_normal_frozen]] = list()
+    for idx, prior in enumerate(priors):
+        mean = means[idx]
+        cov = covs[idx]
+        dist = stats.multivariate_normal(mean=mean, cov=cov)
+        dists.append((prior, dist))
+    test = data.loc[data["set_name"] == "test"]
+    samps = test[["x0", "x1", "x2"]].values
+    guesses: List[float] = [0.0] * samps.shape[0]
+    for idx, samp in enumerate(samps):
+        guesses[idx] = float(_guess_class(samp, dists))
+    data.loc[data["set_name"] == "test", "guess"] = guesses
+    right_cnt = len(numpy.where(test["label"] == guesses)[0])
+    return right_cnt / samps.shape[0]
+
+
+def get_length_scores(
+    frame: pandas.DataFrame, length_tests: List[int]
+) -> pandas.DataFrame:
+    """Get the inferred hidden layer length for each classifier"""
+    all_sets = numpy.unique(frame.set_name.values)
+    score_frame: pandas.DataFrame = pandas.DataFrame(
+        columns=["set_name", "layer_length", "score_means"]
+    )
+    with tqdm(total=(len(all_sets) * len(length_tests))) as pbar:
+        for set_name in all_sets:
+            if set_name == "test":
+                continue
+            train_frame: pandas.DataFrame = frame.loc[frame["set_name"] == set_name]
+            xvals: numpy.ndarray = numpy.array(train_frame[["x0", "x1", "x2"]].values)
+            targets = numpy.array(train_frame["label"].values)
+            for length in length_tests:
+                score_frame = score_frame.append(
+                    {
+                        "set_name": set_name,
+                        "layer_length": length,
+                        "score_means": numpy.mean(
+                            numpy.array(cross_validation(xvals, targets, length))
+                        ),
+                    },
+                    ignore_index=True,
+                )
+                pbar.update(1)
+    return score_frame
+
+
+def plot_scores_lengths(scores: pandas.DataFrame) -> axes.Axes:
+    """Plot mlp scores"""
+    plot: axes.Axes = seaborn.lineplot(
+        data=scores, x="layer_length", y="score_means", hue="set_name"
+    )
+    return plot
+
+
+def plot_acc_train_len(
+    scores: List[float], train_size: List[int], opt: float
+) -> axes.Axes:
+    """Plot the best scores for the train data size"""
+    plot: axes.Axes = seaborn.lineplot(
+        data={"accuracy": scores, "train dataset size": train_size},
+        y="accuracy",
+        x="train dataset size",
+    )
+    plot.set_xscale("log")
+    plot.axhline(opt, linestyle="--")
+    return plot
