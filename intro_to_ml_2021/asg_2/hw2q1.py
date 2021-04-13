@@ -35,7 +35,7 @@ def generateData(N):
         [[1, 0, -3], [0, 1, 0], [-3, 0, 15]]
     )
     x, labels = generateDataFromGMM(N, gmmParameters)
-    return x
+    return x, labels
 
 
 def generateDataFromGMM(N, gmmParameters):

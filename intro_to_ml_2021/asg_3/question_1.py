@@ -1,7 +1,7 @@
 """Functions for question 1"""
 #!/usr/bin/env python3
 
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 
 import numpy
 import pandas
@@ -130,18 +130,27 @@ def train_and_score(
 
 
 def cross_validation(
-    xvals: numpy.ndarray, targets: numpy.ndarray, length: int
+    xvals: numpy.ndarray,
+    targets: numpy.ndarray,
+    length: int,
+    max_iter: int,
+    learning_rate_init: float,
+    scoring: Optional[str],
+    activation: str = "logistic",
 ) -> numpy.ndarray:
     """Run cross validation"""
     mlp = neural_network.MLPClassifier(
         hidden_layer_sizes=(length,),
-        activation="logistic",
-        max_iter=10000,
-        learning_rate_init=0.00004,
+        activation=activation,
+        max_iter=max_iter,
+        learning_rate_init=learning_rate_init,
     )
-    return numpy.array(
-        model_selection.cross_val_score(mlp, xvals, targets, cv=10, n_jobs=-1)
+    scores = numpy.array(
+        model_selection.cross_val_score(
+            mlp, xvals, targets, cv=10, n_jobs=-1, scoring=scoring
+        )
     )
+    return scores
 
 
 def _guess_class(
@@ -181,17 +190,21 @@ def evaluate_optimal(
 
 
 def get_length_scores(
-    frame: pandas.DataFrame, length_tests: List[int]
+    frame: pandas.DataFrame,
+    length_tests: List[int],
+    max_iter: int = 10000,
+    learning_rate_init: float = 0.00004,
+    scoring: Optional[str] = None,
+    activation: str = "logistic",
 ) -> pandas.DataFrame:
     """Get the inferred hidden layer length for each classifier"""
     all_sets = numpy.unique(frame.set_name.values)
+    test_sets = all_sets[numpy.where(all_sets != "test")[0]]
     score_frame: pandas.DataFrame = pandas.DataFrame(
         columns=["set_name", "layer_length", "score_means"]
     )
-    with tqdm(total=(len(all_sets) * len(length_tests))) as pbar:
-        for set_name in all_sets:
-            if set_name == "test":
-                continue
+    with tqdm(total=(len(test_sets) * len(length_tests))) as pbar:
+        for set_name in test_sets:
             train_frame: pandas.DataFrame = frame.loc[frame["set_name"] == set_name]
             xvals: numpy.ndarray = numpy.array(train_frame[["x0", "x1", "x2"]].values)
             targets = numpy.array(train_frame["label"].values)
@@ -201,7 +214,17 @@ def get_length_scores(
                         "set_name": set_name,
                         "layer_length": length,
                         "score_means": numpy.mean(
-                            numpy.array(cross_validation(xvals, targets, length))
+                            numpy.array(
+                                cross_validation(
+                                    xvals,
+                                    targets,
+                                    length,
+                                    max_iter,
+                                    learning_rate_init,
+                                    scoring,
+                                    activation,
+                                )
+                            )
                         ),
                     },
                     ignore_index=True,
