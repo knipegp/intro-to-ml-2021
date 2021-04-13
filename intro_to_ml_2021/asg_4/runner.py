@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+import numpy
 import pandas
 from intro_to_ml_2021.asg_3 import question_1 as asg3q1
 from intro_to_ml_2021.asg_4 import quesiton_1, question_2
@@ -37,8 +38,9 @@ def gmm_2_images():
 def gmm_comp_search():
     for path in [Path("./3096_color.jpg"), Path("./42049_color.jpg")]:
         frame = question_2.load_image(path.expanduser())
-        bic_scores = question_2.bic_search(frame)
+        comps = numpy.array(numpy.arange(20, 40))
+        bic_scores = question_2.bic_search(frame, comps)
         bic_scores.to_csv(Path(path.stem + "_scores.csv"))
-        seaborn.scatterplot(data=bic_scores, x="component_count", y="bic_score")
-        pyplot.savefig(Path(path.stem + "_bic.jpg"))
-        pyplot.close()
+
+
+gmm_comp_search()

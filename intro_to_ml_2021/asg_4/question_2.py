@@ -11,7 +11,6 @@ from matplotlib import pyplot, axes
 import numpy
 import pandas
 import seaborn
-from matplotlib import axes
 from PIL import Image
 from sklearn import mixture, preprocessing
 
@@ -86,14 +85,13 @@ def _work(
 ) -> float:
     gmm = mixture.GaussianMixture(n_components=count)
     gmm.fit(frame[features])
-    score = gmm.bic(frame[features])
+    score = float(gmm.bic(frame[features]))
     return score
 
 
-def bic_search(frame: pandas.DataFrame) -> pandas.DataFrame:
+def bic_search(frame: pandas.DataFrame, comps: numpy.ndarray) -> pandas.DataFrame:
     """Find the best number of components"""
     features = _get_features(frame)
-    comps = numpy.array(numpy.arange(2, 20))
     with multiprocessing.Pool() as pool:
         bic_scores = pool.starmap(_work, [(c, frame, features) for c in comps])
     scores = pandas.DataFrame(
