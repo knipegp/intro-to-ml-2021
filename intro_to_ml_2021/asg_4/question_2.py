@@ -1,18 +1,26 @@
 """Functions for question 2"""
 #!/usr/bin/env python3
 
-
-import multiprocessing
+import math
 import re
 from pathlib import Path
 from typing import List
 
-from matplotlib import pyplot, axes
 import numpy
+from numpy import random
 import pandas
-import seaborn
+from matplotlib import axes, pyplot
 from PIL import Image
-from sklearn import mixture, preprocessing
+from sklearn import mixture
+from tqdm import tqdm
+
+
+def _normalize(arr: numpy.ndarray) -> numpy.ndarray:
+    arrmin = arr.min()
+    arrmax = arr.max() - arrmin
+    arr = arr - arrmin
+    arr = arr / arrmax
+    return arr
 
 
 def load_image(path: Path) -> pandas.DataFrame:
@@ -30,18 +38,36 @@ def load_image(path: Path) -> pandas.DataFrame:
     )
 
     pixel_vals = numpy.array([pixels[coord[0], coord[1]] for coord in unrolled])
+    norm = numpy.hstack(
+        (
+            _normalize(grid[0].flatten()).reshape(-1, 1),
+            _normalize(grid[1].flatten()).reshape(-1, 1),
+        )
+    )
+    for col in range(pixel_vals.shape[1]):
+        norm = numpy.hstack(
+            (
+                norm,
+                _normalize(
+                    pixel_vals[:, col].reshape(
+                        -1,
+                    )
+                ).reshape(-1, 1),
+            )
+        )
 
-    pixel_vecs = numpy.hstack((unrolled, pixel_vals))
-    norm_vecs = numpy.array(preprocessing.normalize(pixel_vecs))
-    return pandas.DataFrame(
+    frame = pandas.DataFrame(
         numpy.hstack(
             (
-                norm_vecs,
+                norm,
                 unrolled,
             )
         ),
-        columns=[f"x{idx}" for idx in range(norm_vecs.shape[1])] + ["xcoord", "ycoord"],
+        columns=[f"x{idx}" for idx in range(norm.shape[1])] + ["xcoord", "ycoord"],
     )
+    frame["ycoord"] = numpy.flip(frame["ycoord"].values)
+    frame["x1"] = numpy.flip(frame["x1"].values)
+    return frame
 
 
 def _get_features(frame: pandas.DataFrame) -> List[str]:
@@ -55,10 +81,10 @@ def _get_features(frame: pandas.DataFrame) -> List[str]:
     return features
 
 
-def gmm_2_component(frame: pandas.DataFrame):
+def gmm_2_component(frame: pandas.DataFrame, comp_cnt: int = 2):
     """Train a two component GMM for the given data"""
     features = _get_features(frame)
-    gmm = mixture.GaussianMixture(n_components=2)
+    gmm = mixture.GaussianMixture(n_components=comp_cnt)
     frame["label"] = gmm.fit_predict(frame[features]).reshape(-1, 1)
 
 
@@ -84,16 +110,33 @@ def _work(
     features: List[str],
 ) -> float:
     gmm = mixture.GaussianMixture(n_components=count)
-    gmm.fit(frame[features])
-    score = float(gmm.bic(frame[features]))
-    return score
+    samples = frame[features]
+    gmm.fit(samples)
+    # all_probs: List[float] = list()
+    # for comp_idx, _ in enumerate(gmm.means_):
+    #     mean = gmm.means_[comp_idx]
+    #     cov = gmm.covariances_[comp_idx]
+    #     probs = stats.multivariate_normal.pdf(samples, mean=mean, cov=cov)
+    #     all_probs.append(probs.sum())
+    # prob = float(numpy.array(all_probs).sum())
+    feat_cnt = len(features)
+    complexity = (
+        (count - 1) + feat_cnt * count + count * feat_cnt * (feat_cnt + 1) / 2
+    ) * math.log(feat_cnt * frame.shape[0])
+    lower = -2 * gmm.score(samples)
+    # print(lower)
+    # print(complexity)
+    return lower + complexity * 0.001
 
 
 def bic_search(frame: pandas.DataFrame, comps: numpy.ndarray) -> pandas.DataFrame:
     """Find the best number of components"""
     features = _get_features(frame)
-    with multiprocessing.Pool() as pool:
-        bic_scores = pool.starmap(_work, [(c, frame, features) for c in comps])
+    bic_scores: List[float] = list()
+    with tqdm(total=comps.shape[0]) as bar:
+        for comp_cnt in comps:
+            bic_scores.append(_work(comp_cnt, frame, features))
+            bar.update(1)
     scores = pandas.DataFrame(
         numpy.hstack(
             (
