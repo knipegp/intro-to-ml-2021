@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import List
 
 import numpy
-from numpy import random
 import pandas
 from matplotlib import axes, pyplot
 from PIL import Image
@@ -112,20 +111,11 @@ def _work(
     gmm = mixture.GaussianMixture(n_components=count)
     samples = frame[features]
     gmm.fit(samples)
-    # all_probs: List[float] = list()
-    # for comp_idx, _ in enumerate(gmm.means_):
-    #     mean = gmm.means_[comp_idx]
-    #     cov = gmm.covariances_[comp_idx]
-    #     probs = stats.multivariate_normal.pdf(samples, mean=mean, cov=cov)
-    #     all_probs.append(probs.sum())
-    # prob = float(numpy.array(all_probs).sum())
     feat_cnt = len(features)
     complexity = (
         (count - 1) + feat_cnt * count + count * feat_cnt * (feat_cnt + 1) / 2
     ) * math.log(feat_cnt * frame.shape[0])
-    lower = -2 * gmm.score(samples)
-    # print(lower)
-    # print(complexity)
+    lower = -2 * float(gmm.score(samples))
     return lower + complexity * 0.001
 
 
