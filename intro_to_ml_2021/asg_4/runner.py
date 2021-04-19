@@ -5,10 +5,12 @@ from pathlib import Path
 
 import numpy
 import pandas
+import seaborn
 from intro_to_ml_2021.asg_3 import question_1 as asg3q1
 from intro_to_ml_2021.asg_4 import question_1, question_2
 from matplotlib import pyplot
-import seaborn
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn import neural_network
 
 
 def generate_question_1():
@@ -27,12 +29,13 @@ def cross_validate_layer_lens():
 
 
 def calc_mses():
+    """Calculate and print mean-squared errors"""
     data = pandas.DataFrame(pandas.read_csv("./data.csv", index_col=0))
-    scores = pandas.DataFrame(pandas.read_csv("./scores.csv", index_col=0))
-    question_1.calculate_mses(data, scores)
+    question_1.calculate_mses(data)
 
 
 def plot_gmm(path: Path, comp_cnt: int):
+    """Plot fit GMM data over photo"""
     frame = question_2.load_image(path.expanduser())
     question_2.gmm_2_component(frame, comp_cnt)
     question_2.plot_gmm_over_image(path.expanduser(), frame)
@@ -41,11 +44,13 @@ def plot_gmm(path: Path, comp_cnt: int):
 
 
 def gmm_2_images():
+    """Plot 2-component GMM"""
     for path in [Path("./3096_color.jpg"), Path("./42049_color.jpg")]:
         plot_gmm(path, 2)
 
 
 def gmm_comp_search():
+    """Find the best number of GMM components"""
     for path in [Path("./3096_color.jpg"), Path("./42049_color.jpg")]:
         frame = question_2.load_image(path.expanduser())
         comps = numpy.array(numpy.arange(2, 20))
@@ -54,6 +59,7 @@ def gmm_comp_search():
 
 
 def plot_comp_search():
+    """Plot the BIC scores for each component count"""
     for path in [Path("./3096_color_scores.csv"), Path("./42049_color_scores.csv")]:
         frame = pandas.read_csv(path, index_col=0)
         seaborn.scatterplot(data=frame, x="component_count", y="bic_score")
@@ -61,23 +67,32 @@ def plot_comp_search():
         pyplot.close()
 
 
-def plot_q_1(frame: pandas.DataFrame):
+def plot_q_1():
+    """Plot the 3D data and whether it is guessed correctly"""
+    frame = pandas.read_csv("./data.csv", index_col=0)
+    train = frame.loc[frame["set_name"] == "train"]
+    mlp = neural_network.MLPClassifier(
+        hidden_layer_sizes=(16,),
+        activation="relu",
+        max_iter=10000,
+        learning_rate_init=0.00004,
+    )
+    mlp.fit(train[["x0", "x1", "x2"]], train["label"])
+    test = frame.loc[frame["set_name"] == "test"]
+    test["guess"] = mlp.predict(test[["x0", "x1", "x2"]])
     fig = pyplot.figure()
     plot: Axes3D = fig.add_subplot(111, projection="3d")
-    for label, color in zip(numpy.unique(frame.label.values), ["r", "g", "b"]):
-        single_label_data: pandas.DataFrame = frame.loc[frame["label"] == label]
-        plot.scatter(
-            single_label_data.x0, single_label_data.x1, single_label_data.x2, c=color
-        )
+    for label, color in zip(numpy.unique(test.label.values), ["r", "g", "b"]):
+        for is_correct, marker in zip([True, False], ["o", "x"]):
+            single_label_data: pandas.DataFrame = test.loc[test["label"] == label]
+            is_correct_data = single_label_data.loc[
+                (single_label_data["guess"] == single_label_data["label"]) == is_correct
+            ]
+            plot.scatter(
+                is_correct_data.x0,
+                is_correct_data.x1,
+                is_correct_data.x2,
+                c=color,
+                marker=marker,
+            )
     pyplot.show()
-    # pyplot.savefig("./q13d.png", format="png")
-
-
-# f = pandas.read_csv("./data.csv", index_col=0)
-# plot_q_1(f)
-calc_mses()
-# gmm_2_images()
-# gmm_comp_search()
-# plot_comp_search()
-# plot_gmm(Path("./3096_color.jpg"), 5)
-# plot_gmm(Path("./42049_color.jpg"), 11)
