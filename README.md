@@ -7,3 +7,4 @@ This repository contains solultion code for EECE5644 assignments.
 - [Assignment 1](https://github.com/knipegp/intro-to-ml-2021/tree/master/intro_to_ml_2021/asg_1)
 - [Assignment 2](https://github.com/knipegp/intro-to-ml-2021/tree/master/intro_to_ml_2021/asg_2)
 - [Assignment 3](https://github.com/knipegp/intro-to-ml-2021/tree/master/intro_to_ml_2021/asg_3)
+- [Assignment 4](https://github.com/knipegp/intro-to-ml-2021/tree/master/intro_to_ml_2021/asg_4)
